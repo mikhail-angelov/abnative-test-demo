@@ -125,35 +125,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <div id="admin-list"></div>
 </div></div>
 <script>
-var users = JSON.parse(localStorage.getItem('users') || '[]');
-var tasks = JSON.parse(localStorage.getItem('tasks') || '[]');
-var sessions = JSON.parse(localStorage.getItem('sessions') || '[]');
-var currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
-
-function saveUsers() { localStorage.setItem('users', JSON.stringify(users)); }
-function saveTasks() { localStorage.setItem('tasks', JSON.stringify(tasks)); }
-function saveSessions() { localStorage.setItem('sessions', JSON.stringify(sessions)); }
+var API = '';
+var token = localStorage.getItem('abnative_token');
+var currentUser = JSON.parse(localStorage.getItem('abnative_user') || 'null');
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-if (users.length === 0) {
-  users.push({ id: 'u1', name: 'Администратор', email: 'admin@abnative.ru', pass: 'admin123', role: 'admin' });
-  saveUsers();
-}
-if (tasks.length === 0) {
-  tasks.push({
-    id: 't1',
-    name: 'Основы горизонтальной абнотивности',
-    description: 'Проверьте знания об определении и структуре.',
-    numQuestions: 5,
-    questions: [
-      { text: 'Что означает термин «абнотивность»?', options: [{ text: 'Способность к абстрактному мышлению', c: false }, { text: 'Способность видеть в других способности и одаренность', c: true }, { text: 'Склонность к индивидуальной работе', c: false }], expl: 'Неологизм от «note» (замечать) + «about» (вокруг).' },
-      { text: 'Кто из ученых внёс вклад в теорию абнотивности?', options: [{ text: 'Кашапов М.М.', c: true }, { text: 'Выготский Л.С.', c: false }, { text: 'Леонтьев А.Н.', c: false }], expl: 'Кашапов М.М. — д.пс.н., профессор ЯрГУ им. П.Г. Демидова.' }
-    ]
-  });
-  saveTasks();
+async function api(method, path, body) {
+  var opts = { method: method, headers: { 'Content-Type': 'application/json' }};
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  var res = await fetch(API + path, opts);
+  var data = await res.json();
+  return { status: res.status, data: data };
 }
 
 function go(page) {
@@ -186,7 +172,7 @@ function showLogin() {
   document.getElementById('register-form').style.display = 'none';
 }
 
-function doRegister() {
+async function doRegister() {
   var name = document.getElementById('reg-name').value.trim();
   var email = document.getElementById('reg-email').value.trim().toLowerCase();
   var pass = document.getElementById('reg-pass').value;
@@ -194,41 +180,40 @@ function doRegister() {
   msg.className = 'msg'; msg.style.display = 'none';
   if (!name || !email || !pass) { msg.textContent = 'Заполните все поля'; msg.style.display = 'block'; return; }
   if (pass.length < 6) { msg.textContent = 'Пароль минимум 6 символов'; msg.style.display = 'block'; return; }
-  for (var i = 0; i < users.length; i++) {
-    if (users[i].email === email) { msg.textContent = 'Такой email уже существует'; msg.style.display = 'block'; return; }
+  var res = await api('POST', '/api/auth/register', { name: name, email: email, password: pass });
+  if (res.status === 201) {
+    msg.className = 'msg ok'; msg.textContent = 'Регистрация успешна! Войдите.'; msg.style.display = 'block';
+    document.getElementById('reg-name').value = '';
+    document.getElementById('reg-email').value = '';
+    document.getElementById('reg-pass').value = '';
+    setTimeout(function() { showLogin(); msg.style.display = 'none'; }, 1500);
+  } else {
+    msg.textContent = res.data.error || 'Ошибка регистрации'; msg.style.display = 'block';
   }
-  users.push({ id: 'u' + Date.now(), name: name, email: email, pass: pass, role: 'user' });
-  saveUsers();
-  msg.className = 'msg ok'; msg.textContent = 'Регистрация успешна! Войдите.'; msg.style.display = 'block';
-  document.getElementById('reg-name').value = '';
-  document.getElementById('reg-email').value = '';
-  document.getElementById('reg-pass').value = '';
-  setTimeout(function() { showLogin(); msg.style.display = 'none'; }, 1500);
 }
 
-function doLogin() {
+async function doLogin() {
   var email = document.getElementById('login-email').value.trim().toLowerCase();
   var pass = document.getElementById('login-pass').value;
   var msg = document.getElementById('login-error'); msg.style.display = 'none';
-  for (var i = 0; i < users.length; i++) {
-    if (users[i].email === email && users[i].pass === pass) {
-      currentUser = { id: users[i].id, name: users[i].name, email: users[i].email, role: users[i].role };
-      localStorage.setItem('currentUser', JSON.stringify(currentUser));
-      updateNav();
-      if (currentUser.role === 'admin') {
-        go('admin');
-      } else {
-        go('profile');
-      }
-      return;
-    }
+  var res = await api('POST', '/api/auth/login', { email: email, password: pass });
+  if (res.status === 200) {
+    token = res.data.token;
+    currentUser = res.data.user;
+    localStorage.setItem('abnative_token', token);
+    localStorage.setItem('abnative_user', JSON.stringify(currentUser));
+    updateNav();
+    if (currentUser.role === 'admin') { go('admin'); } else { go('profile'); }
+  } else {
+    msg.textContent = res.data.error || 'Неверный email или пароль'; msg.style.display = 'block';
   }
-  msg.textContent = 'Неверный email или пароль'; msg.style.display = 'block';
 }
 
 function logout() {
+  token = null;
   currentUser = null;
-  localStorage.removeItem('currentUser');
+  localStorage.removeItem('abnative_token');
+  localStorage.removeItem('abnative_user');
   updateNav();
   go('landing');
 }
@@ -241,14 +226,15 @@ function updateNav() {
   if (currentUser && currentUser.role === 'admin') renderAdminList();
 }
 
-function loadProfile() {
+async function loadProfile() {
   if (!currentUser) return;
-  document.getElementById('p-name').textContent = currentUser.name;
-  document.getElementById('p-email').textContent = currentUser.email;
-  var my = [];
-  for (var i = 0; i < sessions.length; i++) {
-    if (sessions[i].userId === currentUser.id) my.push(sessions[i]);
-  }
+  var userRes = await api('GET', '/api/users/me');
+  if (userRes.status !== 200) return;
+  var u = userRes.data;
+  document.getElementById('p-name').textContent = u.name;
+  document.getElementById('p-email').textContent = u.email;
+  var sesRes = await api('GET', '/api/sessions');
+  var my = sesRes.data.sessions || [];
   var total = my.length, correct = 0, all = 0;
   for (var i = 0; i < my.length; i++) { correct += my[i].correct; all += my[i].total; }
   document.getElementById('s-total').textContent = total;
@@ -265,14 +251,16 @@ function loadProfile() {
   el.innerHTML = html + '</table>';
 }
 
-function renderTaskList() {
+async function renderTaskList() {
   var el = document.getElementById('task-list');
+  var res = await api('GET', '/api/tasks');
+  var tasks = res.data.tasks || [];
   if (tasks.length === 0) { el.innerHTML = '<div class="nt">Пока нет заданий.</div>'; return; }
   var html = '';
   for (var i = 0; i < tasks.length; i++) {
     var t = tasks[i];
     html += '<div class="tc" style="cursor:pointer" onclick="startQuiz(\'' + t.id + '\')">' +
-      '<div class="ti"><h4>' + esc(t.name) + '</h4><span>' + (t.description || '') + ' - ' + (t.numQuestions || t.questions.length) + ' вопросов</span></div>' +
+      '<div class="ti"><h4>' + esc(t.name) + '</h4><span>' + (t.description || '') + ' - ' + (t.numQuestions || t.totalQuestions) + ' вопросов</span></div>' +
       '<button class="btn btn-p">Начать</button></div>';
   }
   el.innerHTML = html;
@@ -281,11 +269,11 @@ function renderTaskList() {
 var quizState = null;
 var selectedOption = -1;
 
-function startQuiz(taskId) {
+async function startQuiz(taskId) {
   if (!currentUser) { alert('Войдите в систему'); go('login'); return; }
-  var task = null;
-  for (var i = 0; i < tasks.length; i++) { if (tasks[i].id === taskId) { task = tasks[i]; break; } }
-  if (!task) return;
+  var res = await api('GET', '/api/tasks/' + taskId);
+  if (res.status !== 200) return;
+  var task = res.data.task;
   var n = Math.min(task.numQuestions || task.questions.length, task.questions.length);
   var shuffled = task.questions.slice().sort(function() { return Math.random() - 0.5; }).slice(0, n);
   quizState = { taskId: task.id, taskName: task.name, questions: shuffled, index: 0, answers: [], finished: false };
@@ -347,7 +335,7 @@ function nextQ() {
   renderQuestion();
 }
 
-function showResults() {
+async function showResults() {
   quizState.finished = true;
   var correct = 0;
   for (var i = 0; i < quizState.answers.length; i++) { if (quizState.answers[i]) correct++; }
@@ -358,8 +346,7 @@ function showResults() {
   if (currentUser) {
     var d = new Date();
     var ds = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-    sessions.push({ id: 's' + Date.now(), userId: currentUser.id, taskName: quizState.taskName, taskId: quizState.taskId, correct: correct, total: total, pct: Math.round(correct / total * 100), date: ds });
-    saveSessions();
+    await api('POST', '/api/sessions', { taskId: quizState.taskId, taskName: quizState.taskName, correct: correct, total: total, pct: Math.round(correct / total * 100), date: ds });
   }
 }
 
@@ -373,32 +360,31 @@ function exitQuiz() {
 var editingId = null;
 var formQuestions = [];
 
-function renderAdminList() {
+async function renderAdminList() {
   var el = document.getElementById('admin-list');
+  var res = await api('GET', '/api/tasks');
+  var tasks = res.data.tasks || [];
   if (tasks.length === 0) { el.innerHTML = '<div class="nt">Нет заданий.</div>'; return; }
   var html = '';
   for (var i = 0; i < tasks.length; i++) {
     var t = tasks[i];
-    html += '<div class="tc"><div class="ti"><h4>' + esc(t.name) + '</h4><span>' + t.questions.length + ' вопросов, показ ' + (t.numQuestions || t.questions.length) + '</span></div>' +
+    html += '<div class="tc"><div class="ti"><h4>' + esc(t.name) + '</h4><span>' + t.totalQuestions + ' вопросов, показ ' + t.numQuestions + '</span></div>' +
       '<div class="ta"><button class="btn btn-p" onclick="editTask(\'' + t.id + '\')">E</button><button class="btn btn-d" onclick="deleteTask(\'' + t.id + '\')">X</button></div></div>';
   }
   el.innerHTML = html;
 }
 
-function deleteTask(id) {
+async function deleteTask(id) {
   if (!confirm('Удалить задание?')) return;
-  var newTasks = [];
-  for (var i = 0; i < tasks.length; i++) { if (tasks[i].id !== id) newTasks.push(tasks[i]); }
-  tasks = newTasks;
-  saveTasks();
+  await api('DELETE', '/api/tasks/' + id);
   renderAdminList();
   renderTaskList();
 }
 
-function editTask(id) {
-  var task = null;
-  for (var i = 0; i < tasks.length; i++) { if (tasks[i].id === id) { task = tasks[i]; break; } }
-  if (!task) return;
+async function editTask(id) {
+  var res = await api('GET', '/api/tasks/' + id);
+  if (res.status !== 200) return;
+  var task = res.data.task;
   editingId = id;
   document.getElementById('form-title').textContent = 'Редактирование задания';
   document.getElementById('task-name').value = task.name;
@@ -486,7 +472,7 @@ function removeOpt(idx, optIdx) {
   renderQEditor(idx);
 }
 
-function saveTask() {
+async function saveTask() {
   var name = document.getElementById('task-name').value.trim();
   if (!name) { alert('Введите название'); return; }
   var validQs = [];
@@ -509,17 +495,18 @@ function saveTask() {
     numQuestions: Math.min(nq, questions.length),
     questions: questions
   };
-  if (editingId) {
-    for (var i = 0; i < tasks.length; i++) { if (tasks[i].id === editingId) { tasks[i] = task; break; } }
+  var res = await api('POST', '/api/tasks', task);
+  if (res.status === 200) {
+    cancelEdit();
+    renderAdminList();
+    renderTaskList();
+    alert('Сохранено!');
   } else {
-    tasks.push(task);
+    alert('Ошибка сохранения: ' + (res.data.error || 'неизвестная'));
   }
-  saveTasks();
-  cancelEdit();
-  renderAdminList();
-  renderTaskList();
-  alert('Сохранено!');
 }
+
+var tasksCache = null;
 
 updateNav();
 renderTaskList();
