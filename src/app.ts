@@ -178,13 +178,18 @@ export function createApp(): express.Application {
     res.json({ sessions });
   });
 
-  // Fallback for SPA — serve index.html for non-API, non-static routes
+  // 404 for unknown /api routes — catch-all before SPA fallback
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/')) {
+      res.status(404).json({ error: 'Not found' });
+    } else {
+      next();
+    }
+  });
+
+  // Fallback for SPA — serve index.html for non-API routes
   app.use((_req, res) => {
-    res.sendFile(path.join(PUBLIC_DIR, 'index.html'), (err) => {
-      if (err) {
-        res.status(404).json({ error: 'Not found' });
-      }
-    });
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
   });
 
   return app;
