@@ -5,6 +5,7 @@
  * Run: node --test tests/api.test.ts
  * Or:  npx tsx --test tests/api.test.ts
  */
+import 'dotenv/config';
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
