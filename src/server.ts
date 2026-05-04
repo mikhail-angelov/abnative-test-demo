@@ -1,7 +1,6 @@
-import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
-import { createHandler } from './app';
+import { createApp } from './app';
 import { migrate } from './migrate';
 import { seedDefaults } from './seed';
 import { closeDb } from './db';
@@ -14,16 +13,18 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 
-// Init DB (uses DB_PATH env or default from db.ts)
+// Init DB (uses DB_PATH env or default :memory: from db.ts)
 migrate();
 seedDefaults();
 
-const server = http.createServer(createHandler());
+const app = createApp();
 
-server.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Static files from: ${PUBLIC_DIR}`);
 });
 
 process.on('SIGINT', () => { closeDb(); process.exit(0); });
 process.on('SIGTERM', () => { closeDb(); process.exit(0); });
+
+export { app, server };

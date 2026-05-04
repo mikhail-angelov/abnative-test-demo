@@ -1,9 +1,12 @@
-HOST=$(shell grep '^HOST=' .env | cut -d '=' -f 2)
+HOST ?= $(shell grep '^HOST=' .env 2>/dev/null | cut -d '=' -f 2)
 
 install:
-	@echo "Building..."
+	npm ci
 	npm run build
-	@echo "Done"
+
+build:
+	npx tsc
+	cp -r public dist/
 
 deploy:
 	@echo "Deploying to $(HOST)..."
@@ -19,6 +22,4 @@ deploy:
 dev:
 	npx tsx watch src/server.ts
 
-build:
-	npx tsc
-	cp -r public dist/
+.PHONY: install build deploy dev

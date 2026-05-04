@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "tsx watch server.ts",
+    "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "migrate": "tsx src/migrate.ts",
@@ -15,11 +15,13 @@
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^12.6.2",
     "dotenv": "^17.3.1",
+    "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.0.0",
     "tsx": "^4.21.0",

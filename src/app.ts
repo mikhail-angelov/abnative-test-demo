@@ -1,241 +1,191 @@
-import { URL } from 'url';
-import * as fs from 'fs';
+import express, { Request, Response, NextFunction } from 'express';
 import * as path from 'path';
-import { getDb, closeDb } from './db';
-import { migrate } from './migrate';
-import { seedDefaults } from './seed';
 import { findUserByEmail, findUserById, createUser, validatePassword } from './auth';
 import { signToken, verifyToken } from './jwt';
 import { getAllTasks, getTaskById, saveTask, deleteTask } from './tasks';
 import { getUserSessions, saveSession } from './sessions';
-import * as http from 'http';
+import { JwtPayload } from 'jsonwebtoken';
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
-const DATA_DIR = path.join(__dirname, '..', 'data');
 
-const MIME: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-};
-
-export function parseUrl(raw: string): { pathname: string; params: URLSearchParams } {
-  const u = new URL(raw, 'http://localhost');
-  return { pathname: u.pathname, params: u.searchParams };
+/** Decoded JWT attached to request */
+interface AuthPayload {
+  id: string;
+  email: string;
+  role: string;
 }
 
-export function parseBody(raw: string): any {
-  try { return JSON.parse(raw); } catch { return {}; }
-}
-
-export function sendJson(res: http.ServerResponse, status: number, data: any): void {
-  const body = JSON.stringify(data);
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  });
-  res.end(body);
-}
-
-export function sendFile(res: http.ServerResponse, filePath: string): void {
-  const ext = path.extname(filePath);
-  const mime = MIME[ext] || 'application/octet-stream';
-  try {
-    const content = fs.readFileSync(filePath);
-    res.writeHead(200, {
-      'Content-Type': mime,
-      'Content-Length': content.length,
-    });
-    res.end(content);
-  } catch {
-    sendJson(res, 404, { error: 'Not found' });
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthPayload;
+    }
   }
 }
 
-export function createHandler(): (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> {
-  return async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const { pathname } = parseUrl(req.url || '/');
-    const method = req.method!.toUpperCase();
+// ─── Auth middleware ────────────────────────────────────────────────────────
+function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const payload = verifyToken(token);
+  if (!payload) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  req.user = payload;
+  next();
+}
 
-    // CORS preflight
-    if (method === 'OPTIONS') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      });
-      res.end();
+// ─── Admin middleware ───────────────────────────────────────────────────────
+function adminMiddleware(req: Request, res: Response, next: NextFunction): void {
+  if (req.user?.role !== 'admin') {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  next();
+}
+
+// ─── App factory ────────────────────────────────────────────────────────────
+export function createApp(): express.Application {
+  const app = express();
+
+  app.use(express.json());
+
+  // CORS
+  app.use((_req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    if (_req.method === 'OPTIONS') {
+      res.sendStatus(204);
       return;
     }
+    next();
+  });
 
-    // Body parser
-    let body = '';
-    if (['POST', 'PUT'].includes(method)) {
-      body = await new Promise<string>((resolve) => {
-        let data = '';
-        req.on('data', (chunk: string) => data += chunk);
-        req.on('end', () => resolve(data));
-      });
+  // ── Static ──────────────────────────────────────────────────────────────
+  app.use(express.static(PUBLIC_DIR));
+
+  // ── API routes ──────────────────────────────────────────────────────────
+
+  // Health
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', time: new Date().toISOString() });
+  });
+
+  // Register
+  app.post('/api/auth/register', (req, res) => {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+      res.status(400).json({ error: 'Заполните все поля' });
+      return;
     }
-
-    try {
-      // ===== STATIC FILES =====
-      if (pathname === '/' || pathname === '/index.html') {
-        const indexPath = path.join(PUBLIC_DIR, 'index.html');
-        if (fs.existsSync(indexPath)) {
-          sendFile(res, indexPath);
-        } else {
-          sendJson(res, 200, { message: 'Abnative Server Running. Place index.html in public/' });
-        }
-        return;
-      }
-
-      if (!pathname.startsWith('/api/')) {
-        const filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'index.html' : pathname);
-        sendFile(res, filePath);
-        return;
-      }
-
-      // ===== API =====
-
-      // GET /api/health
-      if (pathname === '/api/health' && method === 'GET') {
-        sendJson(res, 200, { status: 'ok', time: new Date().toISOString() });
-        return;
-      }
-
-      // POST /api/auth/register
-      if (pathname === '/api/auth/register' && method === 'POST') {
-        const { name, email, password } = parseBody(body);
-        if (!name || !email || !password) {
-          sendJson(res, 400, { error: 'Заполните все поля' });
-          return;
-        }
-        if (password.length < 6) {
-          sendJson(res, 400, { error: 'Пароль минимум 6 символов' });
-          return;
-        }
-        if (findUserByEmail(email)) {
-          sendJson(res, 409, { error: 'Такой email уже существует' });
-          return;
-        }
-        const user = createUser(name, email, password);
-        const token = signToken({ id: user.id, email: user.email, role: user.role });
-        sendJson(res, 201, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
-        return;
-      }
-
-      // POST /api/auth/login
-      if (pathname === '/api/auth/login' && method === 'POST') {
-        const { email, password } = parseBody(body);
-        if (!email || !password) {
-          sendJson(res, 400, { error: 'Заполните все поля' });
-          return;
-        }
-        const user = findUserByEmail(email);
-        if (!user || !validatePassword(password, user.password)) {
-          sendJson(res, 401, { error: 'Неверный email или пароль' });
-          return;
-        }
-        const token = signToken({ id: user.id, email: user.email, role: user.role });
-        sendJson(res, 200, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
-        return;
-      }
-
-      // Auth middleware for protected routes
-      const authHeader = req.headers['authorization'] || '';
-      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-      const payload = verifyToken(token);
-
-      // GET /api/users/me
-      if (pathname === '/api/users/me' && method === 'GET') {
-        if (!payload) { sendJson(res, 401, { error: 'Unauthorized' }); return; }
-        const user = findUserById(payload.id);
-        if (!user) { sendJson(res, 404, { error: 'User not found' }); return; }
-        sendJson(res, 200, { id: user.id, name: user.name, email: user.email, role: user.role });
-        return;
-      }
-
-      // GET /api/tasks
-      if (pathname === '/api/tasks' && method === 'GET') {
-        const tasks = getAllTasks().map(t => ({
-          id: t.id, name: t.name, description: t.description,
-          numQuestions: t.numQuestions, totalQuestions: t.questions.length
-        }));
-        sendJson(res, 200, { tasks });
-        return;
-      }
-
-      // GET /api/tasks/:id
-      const taskMatch = pathname.match(/^\/api\/tasks\/([a-zA-Z0-9_]+)$/);
-      if (taskMatch && method === 'GET') {
-        const task = getTaskById(taskMatch[1]);
-        if (!task) { sendJson(res, 404, { error: 'Task not found' }); return; }
-        sendJson(res, 200, { task });
-        return;
-      }
-
-      // POST /api/tasks (admin only)
-      if (pathname === '/api/tasks' && method === 'POST') {
-        if (!payload || payload.role !== 'admin') { sendJson(res, 403, { error: 'Forbidden' }); return; }
-        const task = parseBody(body);
-        task.id = task.id || 't' + Date.now();
-        saveTask(task);
-        sendJson(res, 200, { task });
-        return;
-      }
-
-      // DELETE /api/tasks/:id (admin only)
-      if (taskMatch && method === 'DELETE') {
-        if (!payload || payload.role !== 'admin') { sendJson(res, 403, { error: 'Forbidden' }); return; }
-        deleteTask(taskMatch[1]);
-        sendJson(res, 200, { ok: true });
-        return;
-      }
-
-      // POST /api/sessions
-      if (pathname === '/api/sessions' && method === 'POST') {
-        if (!payload) { sendJson(res, 401, { error: 'Unauthorized' }); return; }
-        const data = parseBody(body);
-        const session = {
-          id: 's' + Date.now(),
-          user_id: payload.id,
-          task_id: data.taskId,
-          task_name: data.taskName || '',
-          correct: data.correct || 0,
-          total: data.total || 0,
-          pct: data.pct || 0,
-          date: data.date || new Date().toISOString()
-        };
-        saveSession(session);
-        sendJson(res, 201, { session });
-        return;
-      }
-
-      // GET /api/sessions
-      if (pathname === '/api/sessions' && method === 'GET') {
-        if (!payload) { sendJson(res, 401, { error: 'Unauthorized' }); return; }
-        const sessions = getUserSessions(payload.id).map(s => ({
-          id: s.id, taskId: s.task_id, taskName: s.task_name,
-          correct: s.correct, total: s.total, pct: s.pct, date: s.date
-        }));
-        sendJson(res, 200, { sessions });
-        return;
-      }
-
-      // 404
-      sendJson(res, 404, { error: 'Not found' });
-    } catch (err: any) {
-      console.error('Request error:', err);
-      sendJson(res, 500, { error: 'Internal server error' });
+    if (password.length < 6) {
+      res.status(400).json({ error: 'Пароль минимум 6 символов' });
+      return;
     }
-  };
+    if (findUserByEmail(email)) {
+      res.status(409).json({ error: 'Такой email уже существует' });
+      return;
+    }
+    const user = createUser(name, email, password);
+    const token = signToken({ id: user.id, email: user.email, role: user.role });
+    res.status(201).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+  });
+
+  // Login
+  app.post('/api/auth/login', (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      res.status(400).json({ error: 'Заполните все поля' });
+      return;
+    }
+    const user = findUserByEmail(email);
+    if (!user || !validatePassword(password, user.password)) {
+      res.status(401).json({ error: 'Неверный email или пароль' });
+      return;
+    }
+    const token = signToken({ id: user.id, email: user.email, role: user.role });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+  });
+
+  // Profile
+  app.get('/api/users/me', authMiddleware, (req, res) => {
+    const user = findUserById(req.user!.id);
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+  });
+
+  // List tasks
+  app.get('/api/tasks', (_req, res) => {
+    const tasks = getAllTasks().map(t => ({
+      id: t.id, name: t.name, description: t.description,
+      numQuestions: t.numQuestions, totalQuestions: t.questions.length
+    }));
+    res.json({ tasks });
+  });
+
+  // Get task by id
+  app.get('/api/tasks/:id', (req, res) => {
+    const task = getTaskById(req.params.id);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+    res.json({ task });
+  });
+
+  // Create/update task (admin)
+  app.post('/api/tasks', authMiddleware, adminMiddleware, (req, res) => {
+    const task = req.body;
+    task.id = task.id || 't' + Date.now();
+    saveTask(task);
+    res.json({ task });
+  });
+
+  // Delete task (admin)
+  app.delete('/api/tasks/:id', authMiddleware, adminMiddleware, (req, res) => {
+    deleteTask(String(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // Save session result
+  app.post('/api/sessions', authMiddleware, (req, res) => {
+    const data = req.body;
+    const session = {
+      id: 's' + Date.now(),
+      user_id: req.user!.id,
+      task_id: data.taskId,
+      task_name: data.taskName || '',
+      correct: data.correct || 0,
+      total: data.total || 0,
+      pct: data.pct || 0,
+      date: data.date || new Date().toISOString()
+    };
+    saveSession(session);
+    res.status(201).json({ session });
+  });
+
+  // User sessions
+  app.get('/api/sessions', authMiddleware, (req, res) => {
+    const sessions = getUserSessions(req.user!.id).map(s => ({
+      id: s.id, taskId: s.task_id, taskName: s.task_name,
+      correct: s.correct, total: s.total, pct: s.pct, date: s.date
+    }));
+    res.json({ sessions });
+  });
+
+  // Fallback for SPA — serve index.html for non-API, non-static routes
+  app.use((_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'), (err) => {
+      if (err) {
+        res.status(404).json({ error: 'Not found' });
+      }
+    });
+  });
+
+  return app;
 }
