@@ -5,7 +5,6 @@
  * Run: node --test tests/api.test.ts
  * Or:  npx tsx --test tests/api.test.ts
  */
-import 'dotenv/config';
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
@@ -50,6 +49,11 @@ async function request(
 
 // ─── Setup ─────────────────────────────────────────────────────────────────
 before(async () => {
+  // Set defaults for CI where .env may not exist
+  if (!process.env.AUTH_SECRET) process.env.AUTH_SECRET = 'abnative-test-secret';
+  if (!process.env.ADMIN_EMAIL) process.env.ADMIN_EMAIL = 'admin@abnative.ru';
+  if (!process.env.ADMIN_PASSWORD) process.env.ADMIN_PASSWORD = 'admin123';
+  if (!process.env.ADMIN_NAME) process.env.ADMIN_NAME = 'Администратор';
   const memDb = new Database(':memory:');
   memDb.pragma('journal_mode = WAL');
   memDb.pragma('foreign_keys = ON');
