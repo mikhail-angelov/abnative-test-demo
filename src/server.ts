@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import 'dotenv/config';
 import { createApp } from './app';
 import { migrate } from './migrate';
 import { seedDefaults } from './seed';

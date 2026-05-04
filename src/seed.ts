@@ -36,14 +36,18 @@ export interface Session {
 export function seedDefaults(): void {
   const db = getDb();
 
-  const adminCount = db.prepare('SELECT COUNT(*) as cnt FROM users WHERE email = ?').get('admin@abnative.ru') as any;
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@abnative.ru';
+  const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
+  const adminName = process.env.ADMIN_NAME || 'Администратор';
+
+  const adminCount = db.prepare('SELECT COUNT(*) as cnt FROM users WHERE email = ?').get(adminEmail) as any;
   if (adminCount.cnt === 0) {
     const bcrypt = require('bcryptjs');
-    const hash = bcrypt.hashSync('admin123', 10);
+    const hash = bcrypt.hashSync(adminPass, 10);
     db.prepare('INSERT INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)').run(
-      'u1', 'Администратор', 'admin@abnative.ru', hash, 'admin'
+      'u1', adminName, adminEmail, hash, 'admin'
     );
-    console.log('Seeded admin user (admin@abnative.ru / admin123)');
+    console.log('Seeded admin user (' + adminEmail + ' / ' + adminPass + ')');
   }
 
   const taskCount = db.prepare('SELECT COUNT(*) as cnt FROM tasks').get() as any;
