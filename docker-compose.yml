@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: abnative
+    ports:
+      - "3010:3010"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - ./.env
+    restart: unless-stopped
