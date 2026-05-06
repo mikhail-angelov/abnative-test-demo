@@ -16,6 +16,30 @@ class TrainingView extends HTMLElement {
     <div id="q-results" style="display:none"></div>
   </div>
 </div>`;
+    document.addEventListener('app:ready', () => this._bind());
+  }
+
+  _bind() {
+    subscribe((s, prev) => {
+      if (s.page === 'training' && prev.page !== 'training') renderTaskList();
+      if (s.quizState !== prev.quizState) this._onQuizChange(s.quizState, prev.quizState);
+    });
+  }
+
+  _onQuizChange(quiz, prevQuiz) {
+    const welcome = this.querySelector('#welcome-screen');
+    const quizScreen = this.querySelector('#quiz-screen');
+    if (!quiz && prevQuiz) {
+      welcome.style.display = '';
+      quizScreen.style.display = 'none';
+      renderTaskList();
+    } else if (quiz && !prevQuiz) {
+      welcome.style.display = 'none';
+      quizScreen.style.display = 'block';
+      this.querySelector('#q-results').style.display = 'none';
+      this.querySelector('#q-task-name').textContent = quiz.taskName;
+      renderQuestion();
+    }
   }
 }
 customElements.define('training-view', TrainingView);

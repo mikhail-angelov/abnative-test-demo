@@ -2,12 +2,17 @@ version: '3.8'
 
 services:
   app:
-    build: .
+    image: ghcr.io/mikhail-angelov/abnative-test-demo:latest
     container_name: abnative
+    restart: unless-stopped
     ports:
-      - "3010:3010"
+      - "127.0.0.1:3020:3000"
     volumes:
       - ./data:/app/data
     env_file:
       - ./.env
-    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"

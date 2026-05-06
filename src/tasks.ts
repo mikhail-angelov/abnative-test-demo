@@ -1,7 +1,7 @@
 import { getDb } from './db';
 import { Task } from './seed';
 
-export function getAllTasks(): any[] {
+export function getAllTasks(): Task[] {
   const db = getDb();
   const rows = db.prepare('SELECT * FROM tasks ORDER BY name').all() as any[];
   return rows.map(r => ({

@@ -33,5 +33,4 @@ export function migrate(): void {
     );
   `);
 
-  console.log('Migration complete');
 }

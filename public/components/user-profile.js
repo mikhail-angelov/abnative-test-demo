@@ -14,6 +14,13 @@ class UserProfile extends HTMLElement {
     <div id="p-history"></div>
   </div>
 </div>`;
+    document.addEventListener('app:ready', () => this._bind());
+  }
+
+  _bind() {
+    subscribe((s, prev) => {
+      if (s.page === 'profile' && prev.page !== 'profile') loadProfile();
+    });
   }
 }
 customElements.define('user-profile', UserProfile);

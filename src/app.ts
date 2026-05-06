@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import express, { Request, Response, NextFunction } from 'express';
 import * as path from 'path';
 import { findUserByEmail, findUserById, createUser, validatePassword } from './auth';
@@ -141,14 +142,27 @@ export function createApp(): express.Application {
   // Create/update task (admin)
   app.post('/api/tasks', authMiddleware, adminMiddleware, (req, res) => {
     const task = req.body;
-    task.id = task.id || 't' + Date.now();
+    if (!task.name?.trim()) {
+      res.status(400).json({ error: 'Название обязательно' });
+      return;
+    }
+    if (!Array.isArray(task.questions) || task.questions.length === 0) {
+      res.status(400).json({ error: 'Нужен хотя бы один вопрос' });
+      return;
+    }
+    task.id = task.id || randomUUID();
     saveTask(task);
     res.json({ task });
   });
 
   // Delete task (admin)
   app.delete('/api/tasks/:id', authMiddleware, adminMiddleware, (req, res) => {
-    deleteTask(String(req.params.id));
+    const id = req.params.id as string;
+    if (!getTaskById(id)) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+    deleteTask(id);
     res.json({ ok: true });
   });
 
@@ -156,7 +170,7 @@ export function createApp(): express.Application {
   app.post('/api/sessions', authMiddleware, (req, res) => {
     const data = req.body;
     const session = {
-      id: 's' + Date.now(),
+      id: randomUUID(),
       user_id: req.user!.id,
       task_id: data.taskId,
       task_name: data.taskName || '',

@@ -1,8 +1,11 @@
 HOST ?= $(shell grep '^HOST=' .env 2>/dev/null | cut -d '=' -f 2)
 
 install:
-	npm ci
-	npm run build
+	@echo "Installing server..."
+	-ssh root@$(HOST) "mkdir -p /opt/abnative"
+	scp ./.env root@$(HOST):/opt/abnative/.env
+	scp ./docker-compose.yml root@$(HOST):/opt/abnative/docker-compose.yml
+
 
 build:
 	npx tsc
@@ -10,14 +13,10 @@ build:
 
 deploy:
 	@echo "Deploying to $(HOST)..."
-	ssh root@$(HOST) "mkdir -p /opt/abnative"
-	scp docker-compose.yml root@$(HOST):/opt/abnative/
-	rsync -avz --progress dist/ root@$(HOST):/opt/abnative/dist/
-	rsync -avz --progress public/ root@$(HOST):/opt/abnative/public/
-	scp package*.json root@$(HOST):/opt/abnative/
-	ssh root@$(HOST) "cd /opt/abnative && npm ci --omit=dev"
-	ssh root@$(HOST) "cd /opt/abnative && docker compose down && docker compose up -d"
-	@echo "Deployed!"
+	ssh root@$(HOST) "docker pull ghcr.io/mikhail-angelov/abnative-test-demo:latest"
+	-ssh root@$(HOST) "cd /opt/abnative && docker compose down"
+	ssh root@$(HOST) "cd /opt/abnative && docker compose up -d"
+
 
 dev:
 	npx tsx watch src/server.ts

@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { getDb } from './db';
 
 export interface Question {
@@ -42,7 +43,6 @@ export function seedDefaults(): void {
 
   const adminCount = db.prepare('SELECT COUNT(*) as cnt FROM users WHERE email = ?').get(adminEmail) as any;
   if (adminCount.cnt === 0) {
-    const bcrypt = require('bcryptjs');
     const hash = bcrypt.hashSync(adminPass, 10);
     db.prepare('INSERT INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)').run(
       'u1', adminName, adminEmail, hash, 'admin'
