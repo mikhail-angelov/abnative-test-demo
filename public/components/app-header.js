@@ -6,6 +6,7 @@ class AppHeader extends HTMLElement {
   <nav>
     <button id="nb-landing" onclick="go('landing')" class="active">Главная</button>
     <button id="nb-training" onclick="go('training')">Тренинг</button>
+    <button id="nb-library" onclick="go('library')">Библиотека</button>
     <button id="nb-profile" onclick="go('profile')">Кабинет</button>
     <button id="nb-admin" onclick="go('admin')">Админ</button>
     <button id="nb-login" onclick="go('login')">Войти</button>
