@@ -2,7 +2,7 @@ class LandingPage extends HTMLElement {
   connectedCallback() {
     this.innerHTML = `
 <div class="hero">
-  <h1>Хочешь чтобы командная работа была более эффективной?</h1>
+  <h1>Хочешь, чтобы командная работа была более эффективной?</h1>
   <p class="sub">Прокачай свою горизонтальную абнотивность!</p>
   <button class="cta" onclick="go('training')">Начать тренинг →</button>
 </div>
