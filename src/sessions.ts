@@ -6,6 +6,16 @@ export function getUserSessions(userId: string): Session[] {
   return db.prepare('SELECT * FROM sessions WHERE user_id = ? ORDER BY date DESC LIMIT 100').all(userId) as Session[];
 }
 
+export function getAllSessions(): (Session & { user_name: string; user_email: string })[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT s.*, u.name AS user_name, u.email AS user_email
+    FROM sessions s
+    JOIN users u ON u.id = s.user_id
+    ORDER BY u.name, s.date DESC
+  `).all() as any[];
+}
+
 export function saveSession(session: Session): void {
   const db = getDb();
   db.prepare('INSERT INTO sessions (id, user_id, task_id, task_name, correct, total, pct, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(

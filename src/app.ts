@@ -4,7 +4,7 @@ import * as path from 'path';
 import { findUserByEmail, findUserById, createUser, validatePassword } from './auth';
 import { signToken, verifyToken } from './jwt';
 import { getAllTasks, getTaskById, saveTask, deleteTask } from './tasks';
-import { getUserSessions, saveSession } from './sessions';
+import { getUserSessions, getAllSessions, saveSession } from './sessions';
 import { JwtPayload } from 'jsonwebtoken';
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -188,6 +188,23 @@ export function createApp(): express.Application {
     const sessions = getUserSessions(req.user!.id).map(s => ({
       id: s.id, taskId: s.task_id, taskName: s.task_name,
       correct: s.correct, total: s.total, pct: s.pct, date: s.date
+    }));
+    res.json({ sessions });
+  });
+
+  // Admin: all sessions with user info
+  app.get('/api/admin/stats', authMiddleware, adminMiddleware, (_req, res) => {
+    const sessions = getAllSessions().map(s => ({
+      id: s.id,
+      userId: s.user_id,
+      userName: s.user_name,
+      userEmail: s.user_email,
+      taskId: s.task_id,
+      taskName: s.task_name,
+      correct: s.correct,
+      total: s.total,
+      pct: s.pct,
+      date: s.date
     }));
     res.json({ sessions });
   });
