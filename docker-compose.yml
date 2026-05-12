@@ -6,7 +6,7 @@ services:
     container_name: abnative
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3020:3000"
+      - "127.0.0.1:3021:3000"
     volumes:
       - ./data:/app/data
     env_file:
