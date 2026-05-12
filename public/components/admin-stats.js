@@ -9,18 +9,9 @@ class AdminStats extends HTMLElement {
     <div class="nt">Загрузка...</div>
   </div>
 </div>`;
-    document.addEventListener('app:ready', () => this._bind());
   }
 
-  _bind() {
-    subscribe((s, prev) => {
-      if (s.page === 'admin-stats' && prev.page !== 'admin-stats') {
-        this._loadStats();
-      }
-    });
-  }
-
-  async _loadStats() {
+  async loadStats() {
     const el = document.getElementById('admin-stats-content');
     if (!el) return;
     try {

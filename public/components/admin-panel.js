@@ -56,4 +56,8 @@ customElements.define('admin-panel', AdminPanel);
 function switchAdminTab(tab) {
   document.querySelectorAll('.admin-tab').forEach(t => t.classList.toggle('act', t.dataset.tab === tab));
   document.querySelectorAll('.admin-tab-content').forEach(c => c.style.display = c.id === 'admin-tab-' + tab ? '' : 'none');
+  if (tab === 'stats') {
+    const statsEl = document.querySelector('admin-stats');
+    if (statsEl) statsEl.loadStats();
+  }
 }
